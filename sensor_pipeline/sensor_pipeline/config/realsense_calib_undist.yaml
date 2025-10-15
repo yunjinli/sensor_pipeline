@@ -1,0 +1,30 @@
+image_width: 1280 # <— your width
+image_height: 720 # <— your height
+camera_name: camera/realsense/color
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [
+      917.626363,
+      0.000000,
+      631.016065,
+      0.000000,
+      920.528195,
+      345.491278,
+      0,
+      0,
+      1,
+    ] # <— fill with your values
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [0.0, 0.0, 0.0, 0.0, 0.0] # <— fill with your values
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1, 0, 0, 0, 1, 0, 0, 0, 1]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [917.626363, 0, 631.016065, 0, 0, 920.528195, 345.491278, 0, 0, 0, 1, 0]

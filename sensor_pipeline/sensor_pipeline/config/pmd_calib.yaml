@@ -1,0 +1,30 @@
+image_width: 224 # <— your width
+image_height: 172 # <— your height
+camera_name: pmd_royale_ros_camera_node
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [
+      205.731476,
+      0.000000,
+      112.496540,
+      0.000000,
+      206.057320,
+      85.766603,
+      0,
+      0,
+      1,
+    ] # <— fill with your values
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [0.287139, -0.740035, 0.000383, -0.001975, 0.000000] # <— fill with your values
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1, 0, 0, 0, 1, 0, 0, 0, 1]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [205.731476, 0, 112.496540, 0, 0, 206.057320, 85.766603, 0, 0, 0, 1, 0]

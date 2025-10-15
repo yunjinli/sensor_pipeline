@@ -229,15 +229,15 @@ class PointCloudColorizer(Node):
             self.get_logger().warn('Image size != CameraInfo size; skipping')
             return
 
-        if not self.save:
-            self.get_logger().info('Saving one frame for debugging...')
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            cv2.imwrite('/home/yunjinli/camera_calibration/dbg_image.png', img)
-            pc_points = np.asarray([[p[0], p[1], p[2]]
-                            for p in pc2.read_points(pc_msg, field_names=('x','y','z'), skip_nans=True)],
-                            dtype=np.float32)
-            np.save('/home/yunjinli/camera_calibration/dbg_pc_xyz.npy', pc_points)
-            self.save = True
+        # if not self.save:
+        #     self.get_logger().info('Saving one frame for debugging...')
+        #     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        #     cv2.imwrite('/home/yunjinli/camera_calibration/dbg_image.png', img)
+        #     pc_points = np.asarray([[p[0], p[1], p[2]]
+        #                     for p in pc2.read_points(pc_msg, field_names=('x','y','z'), skip_nans=True)],
+        #                     dtype=np.float32)
+        #     np.save('/home/yunjinli/camera_calibration/dbg_pc_xyz.npy', pc_points)
+        #     self.save = True
         src = pc_msg.header.frame_id
         
         # if src != self.rgb_frame:

@@ -1,9 +1,9 @@
 [submodule "pmd-royale-ros"]
-	path = pmd-royale-ros
+	path = cameras/pmd-royale-ros
 	url = https://github.com/pmdtechnologies/pmd-royale-ros.git
 [submodule "realsense-ros"]
-	path = realsense-ros
+	path = cameras/realsense-ros
 	url = https://github.com/IntelRealSense/realsense-ros.git
 [submodule "bgt60tr13c_ros2"]
-	path = bgt60tr13c_ros2
+	path = radars/bgt60tr13c_ros2
 	url = https://github.com/yunjinli/bgt60tr13c_ros2.git

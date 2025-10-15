@@ -41,8 +41,8 @@ def generate_launch_description():
     # rgb_undist_yaml = os.path.join(share, 'config', 'realsense_calib_undist.yaml')
     # tof_undist_yaml = os.path.join(share, 'config', 'pmd_calib_undist.yaml')
     
-    pmd_royale_ros_examples_path = get_package_share_directory('pmd_royale_ros_examples')
-    flexx_config = os.path.join(pmd_royale_ros_examples_path, 'config', 'flexx2.yaml')
+    # pmd_royale_ros_examples_path = get_package_share_directory('pmd_royale_ros_examples')
+    flexx_config = os.path.join(share, 'config', 'flexx2.yaml')
     
     # --- If instead your matrix is T_tof<-rgb (pose of RGB in TOF frame), use this one: ---
     # static_tf_rgb_in_tof = Node(

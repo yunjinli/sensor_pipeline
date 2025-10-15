@@ -16,8 +16,8 @@ from ament_index_python.packages import get_package_share_directory
 from os.path import join
 
 def generate_launch_description():
-    pmd_royale_ros_examples_path = get_package_share_directory('pmd_royale_ros_examples')
-    flexx_config = join(pmd_royale_ros_examples_path, 'config', 'flexx2.yaml')
+    share = get_package_share_directory('pmd_royale_ros_examples')
+    flexx_config = join(share, 'config', 'flexx2.yaml')
 
     # static_tf_tof_in_rgb = Node(
     #     package='tf2_ros',

@@ -23,5 +23,5 @@
     # Uncomment below and modify for your specific Flexx2
     serial: 8834-2375-2730-6A40
     use_sim_time: false
-    # usecase: Mode_9_30fps
-    usecase: Mode_5_60fps
+    usecase: Mode_9_30fps
+    # usecase: Mode_5_60fps

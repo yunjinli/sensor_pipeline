@@ -11,7 +11,9 @@ from message_filters import Subscriber, ApproximateTimeSynchronizer
 
 from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
 import cv2
-
+import sys
+from pathlib import Path
+import os
 
 class PointCloudColorizer(Node):
     def __init__(self):
@@ -64,15 +66,120 @@ class PointCloudColorizer(Node):
                              reliability=QoSReliabilityPolicy.RELIABLE,
                              durability=QoSDurabilityPolicy.VOLATILE)
         self.pub = self.create_publisher(PointCloud2, out_topic, out_qos)
-
+        self.pub_depth_map = self.create_publisher(Image, img_topic.replace('image_rect_color', 'image_rect_depth'), out_qos)
+        
         self.get_logger().info(f'Colorizing PC: pc={pc_topic}, img={img_topic}, info={info_topic} → {out_topic}')
 
         self.save = False
         self.R = None
         self.T = None
         self.tf = None
-        
-        
+    
+    def imgmsg_to_rgb(self, img_msg: Image) -> np.ndarray:
+        """
+        Convert sensor_msgs/Image to RGB uint8 HxWx3 NumPy array.
+        Handles common encodings: rgb8, bgr8, rgba8, bgra8.
+        """
+        enc = img_msg.encoding.lower()
+        cv_img = self.bridge.imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
+        if enc.startswith("bgr"):
+            # convert to RGB for consistent saving
+            rgb = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+        else:
+            # already RGB if desired_encoding="rgb8"
+            rgb = cv_img
+        return rgb
+
+    # def numpy_to_image_msg(self, depth: np.ndarray, frame_id: str = "camera_link", encoding: str = "") -> Image:
+    #     if depth.ndim != 2:
+    #         raise ValueError("Depth array must be HxW, single channel.")
+
+    #     if encoding is "":
+    #         if depth.dtype == np.float32:
+    #             encoding = "32FC1"
+    #         elif depth.dtype == np.uint16:
+    #             encoding = "16UC1"
+    #         else:
+    #             raise ValueError("Unsupported dtype. Use float32 (meters) or uint16 (millimeters).")
+
+    #     msg = Image()
+    #     msg.height, msg.width = depth.shape
+    #     msg.encoding = encoding
+    #     # big-endian if dtype is explicitly '>' or native big-endian
+    #     msg.is_bigendian = (depth.dtype.byteorder == '>' or 
+    #                         (depth.dtype.byteorder == '=' and sys.byteorder == 'big'))
+    #     msg.step = msg.width * depth.dtype.itemsize
+    #     msg.data = depth.tobytes(order='C')
+    #     msg.header.frame_id = frame_id
+    #     return msg  
+    
+    def save_rgb_depth_pair(self, img_msg: Image,
+                        Zfill: np.ndarray,
+                        out_dir: str,
+                        ) -> None:
+                        # save_depth_as_npy: bool = False) -> dict:
+        """
+        Save RGB (from img_msg) and depth (from Zfill) with a shared timestamped stem.
+        Returns dict with written paths.
+        """
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+
+        # Build filename stem from ROS time if available
+        if isinstance(img_msg, Image) and img_msg.header.stamp:
+            stamp = img_msg.header.stamp
+            stem = f"{stamp.sec:010d}_{stamp.nanosec:09d}"
+        else:
+            # Fallback: monotonic counter or wall time can be used here
+            import time
+            t = time.time()
+            sec = int(t)
+            nsec = int((t - sec) * 1e9)
+            stem = f"{sec:010d}_{nsec:09d}"
+
+        # --- Save RGB ---
+        rgb = self.imgmsg_to_rgb(img_msg)  # HxWx3 uint8
+        rgb_path = os.path.join(out_dir, f"{stem}_rgb.png")
+        # cv2 wants BGR; convert back for saving
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(rgb_path, bgr)
+
+        # --- Save Depth ---
+        # written = {}
+        # if save_depth_as_npy and Zfill.dtype == np.float32:
+            # Lossless float meters
+        depth_npy_path = os.path.join(out_dir, f"{stem}_depth.npy")
+        self.get_logger().info(f"Saving depth numpy to: {depth_npy_path}")
+        np.save(depth_npy_path, Zfill)
+        # written["depth_npy"] = depth_npy_path
+
+        # Also (or alternatively) write 16-bit PNG in millimeters for easy viewing
+        # depth_u16 = depth_to_16uc1_mm(Zfill)
+        # depth_png_path = os.path.join(out_dir, f"{stem}_depth_mm.png")
+        # cv2.imwrite(depth_png_path, depth_u16)
+
+        # --- Optional: write a tiny JSON sidecar with metadata ---
+        # meta = {
+        #     "stamp": {"sec": int(stem.split("_")[0]), "nsec": int(stem.split("_")[1])},
+        #     "rgb_path": os.path.basename(rgb_path),
+        #     "depth_png_path": os.path.basename(depth_png_path),
+        #     "depth_dtype_in": str(Zfill.dtype),
+        #     "depth_units_in": "m" if Zfill.dtype == np.float32 else "mm",
+        #     "frame_id": getattr(img_msg.header, "frame_id", ""),
+        #     "width": int(img_msg.width),
+        #     "height": int(img_msg.height),
+        # }
+        # meta_path = os.path.join(out_dir, f"{stem}.json")
+        # with open(meta_path, "w") as f:
+        #     json.dump(meta, f, indent=2)
+
+        # written.update({
+        #     "rgb_png": rgb_path,
+        #     "depth_png": depth_png_path,
+        #     "meta_json": meta_path,
+        #     "stem": stem,
+        # })
+        # return written
+   
     def on_info(self, ci: CameraInfo):
         # Expect rectified model (D=0). We use K (or P[0:3,0:3]) as intrinsics
         K = np.array(ci.k, dtype=np.float64).reshape(3,3)
@@ -329,6 +436,11 @@ class PointCloudColorizer(Node):
         else:
             Zfill = Zimg
 
+        # self.get_logger().info(f"shape depth: {Zfill.shape}")
+        
+        # depth_msg = self.numpy_to_image_msg(Zfill, frame_id=self.rgb_frame)
+        # depth_msg.header = img_msg.header
+        # self.pub_depth_map.publish(depth_msg)
         # 3) normalize to a stable display range and colorize
         NEAR, FAR = 0.1, 10.0  # meters (set once for your setup)
         zn = np.clip((Zfill - NEAR) / (FAR - NEAR), 0.0, 1.0)
@@ -366,6 +478,7 @@ class PointCloudColorizer(Node):
 
         # Create PointCloud2 (fields: x,y,z,rgb)
         self.publish_xyzrgb_fast(header=pc_msg.header, xyz_f32=P_sel, rgb_float=rgb_as_float)
+        self.save_rgb_depth_pair(img_msg=img_msg, Zfill=Zfill, out_dir='/home/yunjinli/git_repo/gradslam/data/room4')
         
 def main():
     rclpy.init()

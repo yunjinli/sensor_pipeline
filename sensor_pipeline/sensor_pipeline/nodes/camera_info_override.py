@@ -104,9 +104,25 @@ class CameraInfoOverride(Node):
 
     def on_image(self, img: Image):
         ci = CameraInfo()
+        # self.get_logger().info(f'Received image (h, w): {img.height}, {img.width}')
         ci.header = img.header
         if self.frame_id:
             ci.header.frame_id = self.frame_id
+        
+        if self.base_info.width != img.width or self.base_info.height != img.height:
+            self.get_logger().info(f'Image size ({img.width}x{img.height}) does not match calib ({self.base_info.width}x{self.base_info.height}); adjusting CameraInfo accordingly.')
+            new_k = [self.base_info.k[0] / self.base_info.width * img.width, 0.0, self.base_info.k[2] / self.base_info.width * img.width,
+                        0.0, self.base_info.k[4] / self.base_info.height * img.height, self.base_info.k[5] / self.base_info.height * img.height,
+                        0.0, 0.0, 1.0]
+            self.base_info.k = new_k
+            self.base_info.p = [new_k[0], 0.0, new_k[2], 0.0,
+                                0.0, new_k[4], new_k[5], 0.0,
+                                0.0, 0.0, 1.0, 0.0]
+            
+            self.base_info.width = img.width
+            self.base_info.height = img.height
+            
+            
         ci.width  = self.base_info.width
         ci.height = self.base_info.height
         ci.distortion_model = self.base_info.distortion_model

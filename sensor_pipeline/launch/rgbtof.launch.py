@@ -16,7 +16,7 @@ from ament_index_python.packages import get_package_share_directory
 from os.path import join
 
 def generate_launch_description():
-    share = get_package_share_directory('pmd_royale_ros_examples')
+    share = get_package_share_directory('sensor_pipeline')
     flexx_config = join(share, 'config', 'flexx2.yaml')
 
     # static_tf_tof_in_rgb = Node(

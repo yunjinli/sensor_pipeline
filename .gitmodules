@@ -7,3 +7,6 @@
 [submodule "bgt60tr13c_ros2"]
 	path = radars/bgt60tr13c_ros2
 	url = https://github.com/yunjinli/bgt60tr13c_ros2.git
+[submodule "cameras/usb_cam"]
+	path = cameras/usb_cam
+	url = https://github.com/ros-drivers/usb_cam.git

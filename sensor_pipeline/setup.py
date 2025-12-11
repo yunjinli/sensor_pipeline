@@ -29,6 +29,7 @@ setup(
             'camera_info_override = sensor_pipeline.nodes.camera_info_override:main',
             'colorize_pointcloud = sensor_pipeline.nodes.colorize_pointcloud:main',
             'grayscale_pointcloud = sensor_pipeline.nodes.grayscale_pointcloud:main',
+            'depth_overlay = sensor_pipeline.nodes.depth_overlay:main',
         ],
     },
 )

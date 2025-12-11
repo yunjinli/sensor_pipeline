@@ -15,26 +15,24 @@ import sys
 from pathlib import Path
 import os
 
-class PointCloudColorizer(Node):
+class DepthOverlay(Node):
     def __init__(self):
-        super().__init__('pointcloud_colorizer')
+        super().__init__('depth_overlay')
 
         # Params
         self.declare_parameter('pc_topic', '/pmd_royale_ros_camera_node/point_cloud_0')
         self.declare_parameter('rgb_image_topic', '/rgb/image_rect_color')
         self.declare_parameter('rgb_camera_info_topic', '/camera/realsense/color/camera_info_over')
         self.declare_parameter('rgb_optical_frame', 'camera_color_optical_frame')
-        self.declare_parameter('output_topic', '/rgb/points_xyzrgb_direct')
         self.declare_parameter('queue_size', 3)
 
         pc_topic   = self.get_parameter('pc_topic').get_parameter_value().string_value
         img_topic  = self.get_parameter('rgb_image_topic').get_parameter_value().string_value
         info_topic = self.get_parameter('rgb_camera_info_topic').get_parameter_value().string_value
         self.rgb_frame = self.get_parameter('rgb_optical_frame').get_parameter_value().string_value
-        out_topic = self.get_parameter('output_topic').get_parameter_value().string_value
         q = int(self.get_parameter('queue_size').get_parameter_value().integer_value)
 
-        self.pub_dbg = self.create_publisher(Image, '/rgb/debug_projection', 1)
+        # self.pub_dbg = self.create_publisher(Image, '/rgb/debug_projection', 1)
         
         # TF buffer/listener
         self.tf_buffer = tf2_ros.Buffer(cache_time=rclpy.time.Duration(seconds=10.0))
@@ -65,10 +63,11 @@ class PointCloudColorizer(Node):
         out_qos = QoSProfile(history=QoSHistoryPolicy.KEEP_LAST, depth=1,
                              reliability=QoSReliabilityPolicy.RELIABLE,
                              durability=QoSDurabilityPolicy.VOLATILE)
-        self.pub = self.create_publisher(PointCloud2, out_topic, out_qos)
-        self.pub_depth_map = self.create_publisher(Image, img_topic.replace('image_rect_color', 'image_rect_depth'), out_qos)
+        # self.pub = self.create_publisher(PointCloud2, out_topic, out_qos)
+        out_topic = img_topic.replace('image_rect_color', 'image_rect_depth')
+        self.pub_depth_map = self.create_publisher(Image, out_topic, out_qos)
         
-        self.get_logger().info(f'Colorizing PC: pc={pc_topic}, img={img_topic}, info={info_topic} → {out_topic}')
+        self.get_logger().info(f'Depth overlay with RGB: pc={pc_topic}, img={img_topic}, info={info_topic} → {out_topic}')
 
         self.save = False
         self.R = None
@@ -90,96 +89,24 @@ class PointCloudColorizer(Node):
             rgb = cv_img
         return rgb
 
-    # def numpy_to_image_msg(self, depth: np.ndarray, frame_id: str = "camera_link", encoding: str = "") -> Image:
-    #     if depth.ndim != 2:
-    #         raise ValueError("Depth array must be HxW, single channel.")
+    def publish_depth_buffer(self, rgb_msg: Image, depth_numpy):
+        try:
+            if depth_numpy.dtype != np.float32:
+                depth_numpy = depth_numpy.astype(np.float32)
 
-    #     if encoding is "":
-    #         if depth.dtype == np.float32:
-    #             encoding = "32FC1"
-    #         elif depth.dtype == np.uint16:
-    #             encoding = "16UC1"
-    #         else:
-    #             raise ValueError("Unsupported dtype. Use float32 (meters) or uint16 (millimeters).")
+            ros_msg = self.bridge.cv2_to_imgmsg(depth_numpy, encoding="32FC1")
 
-    #     msg = Image()
-    #     msg.height, msg.width = depth.shape
-    #     msg.encoding = encoding
-    #     # big-endian if dtype is explicitly '>' or native big-endian
-    #     msg.is_bigendian = (depth.dtype.byteorder == '>' or 
-    #                         (depth.dtype.byteorder == '=' and sys.byteorder == 'big'))
-    #     msg.step = msg.width * depth.dtype.itemsize
-    #     msg.data = depth.tobytes(order='C')
-    #     msg.header.frame_id = frame_id
-    #     return msg  
-    
-    def save_rgb_depth_pair(self, img_msg: Image,
-                        Zfill: np.ndarray,
-                        out_dir: str,
-                        ) -> None:
-                        # save_depth_as_npy: bool = False) -> dict:
-        """
-        Save RGB (from img_msg) and depth (from Zfill) with a shared timestamped stem.
-        Returns dict with written paths.
-        """
-        Path(out_dir).mkdir(parents=True, exist_ok=True)
+            stamp = rgb_msg.header.stamp
+            frame_id = rgb_msg.header.frame_id
+            
+            ros_msg.header.stamp = stamp
+            ros_msg.header.frame_id = frame_id
 
-        # Build filename stem from ROS time if available
-        if isinstance(img_msg, Image) and img_msg.header.stamp:
-            stamp = img_msg.header.stamp
-            stem = f"{stamp.sec:010d}_{stamp.nanosec:09d}"
-        else:
-            # Fallback: monotonic counter or wall time can be used here
-            import time
-            t = time.time()
-            sec = int(t)
-            nsec = int((t - sec) * 1e9)
-            stem = f"{sec:010d}_{nsec:09d}"
+            self.pub_depth_map.publish(ros_msg)
 
-        # --- Save RGB ---
-        rgb = self.imgmsg_to_rgb(img_msg)  # HxWx3 uint8
-        rgb_path = os.path.join(out_dir, f"{stem}_rgb.png")
-        # cv2 wants BGR; convert back for saving
-        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(rgb_path, bgr)
-
-        # --- Save Depth ---
-        # written = {}
-        # if save_depth_as_npy and Zfill.dtype == np.float32:
-            # Lossless float meters
-        depth_npy_path = os.path.join(out_dir, f"{stem}_depth.npy")
-        self.get_logger().info(f"Saving depth numpy to: {depth_npy_path}")
-        np.save(depth_npy_path, Zfill)
-        # written["depth_npy"] = depth_npy_path
-
-        # Also (or alternatively) write 16-bit PNG in millimeters for easy viewing
-        # depth_u16 = depth_to_16uc1_mm(Zfill)
-        # depth_png_path = os.path.join(out_dir, f"{stem}_depth_mm.png")
-        # cv2.imwrite(depth_png_path, depth_u16)
-
-        # --- Optional: write a tiny JSON sidecar with metadata ---
-        # meta = {
-        #     "stamp": {"sec": int(stem.split("_")[0]), "nsec": int(stem.split("_")[1])},
-        #     "rgb_path": os.path.basename(rgb_path),
-        #     "depth_png_path": os.path.basename(depth_png_path),
-        #     "depth_dtype_in": str(Zfill.dtype),
-        #     "depth_units_in": "m" if Zfill.dtype == np.float32 else "mm",
-        #     "frame_id": getattr(img_msg.header, "frame_id", ""),
-        #     "width": int(img_msg.width),
-        #     "height": int(img_msg.height),
-        # }
-        # meta_path = os.path.join(out_dir, f"{stem}.json")
-        # with open(meta_path, "w") as f:
-        #     json.dump(meta, f, indent=2)
-
-        # written.update({
-        #     "rgb_png": rgb_path,
-        #     "depth_png": depth_png_path,
-        #     "meta_json": meta_path,
-        #     "stem": stem,
-        # })
-        # return written
-   
+        except Exception as e:
+            self.get_logger().error(f'Failed to publish depth: {str(e)}')
+            
     def on_info(self, ci: CameraInfo):
         # Expect rectified model (D=0). We use K (or P[0:3,0:3]) as intrinsics
         K = np.array(ci.k, dtype=np.float64).reshape(3,3)
@@ -191,38 +118,6 @@ class PointCloudColorizer(Node):
             self.K = K.copy()
         self.width  = int(ci.width)
         self.height = int(ci.height)
-
-    def bilinear_sample_bgr(self, img, u_f, v_f):
-        """
-        img: HxWx3 uint8 (BGR)
-        u_f, v_f: float pixel coords, shape (K,)
-        returns: (K,3) uint8 BGR colors
-        """
-        H, W, _ = img.shape
-        # ensure in-bounds for sampling the 4 neighbors
-        u = np.clip(u_f, 0, W - 1.001).astype(np.float32)
-        v = np.clip(v_f, 0, H - 1.001).astype(np.float32)
-
-        u0 = np.floor(u).astype(np.int32)
-        v0 = np.floor(v).astype(np.int32)
-        u1 = np.clip(u0 + 1, 0, W - 1)
-        v1 = np.clip(v0 + 1, 0, H - 1)
-
-        du = (u - u0).astype(np.float32)             # (K,)
-        dv = (v - v0).astype(np.float32)             # (K,)
-
-        I00 = img[v0, u0].astype(np.float32)         # (K,3)
-        I10 = img[v0, u1].astype(np.float32)
-        I01 = img[v1, u0].astype(np.float32)
-        I11 = img[v1, u1].astype(np.float32)
-
-        w00 = ((1 - du) * (1 - dv))[:, None]         # (K,1)
-        w10 = (du * (1 - dv))[:, None]
-        w01 = ((1 - du) * dv)[:, None]
-        w11 = (du * dv)[:, None]
-
-        out = I00 * w00 + I10 * w10 + I01 * w01 + I11 * w11
-        return np.clip(out + 0.5, 0, 255).astype(np.uint8)
     
     def pc2_xyz_numpy(self, msg: PointCloud2):
         # Assumes little-endian floats (most ROS cams); add checks if needed
@@ -253,32 +148,6 @@ class PointCloudColorizer(Node):
         # m = np.isfinite(xyz).all(1)
         # return xyz[m]
         return xyz
-    
-    def publish_xyzrgb_fast(self, header, xyz_f32: np.ndarray, rgb_float: np.ndarray):
-        # xyz_f32: (N,3) float32 ; rgb_float: (N,) float32 (packed RGB)
-        N = xyz_f32.shape[0]
-        msg = PointCloud2()
-        msg.header = header
-        msg.height = 1
-        msg.width  = N
-        msg.is_bigendian = False
-        msg.is_dense = True
-        msg.fields = [
-            PointField(name='x',   offset=0,  datatype=PointField.FLOAT32, count=1),
-            PointField(name='y',   offset=4,  datatype=PointField.FLOAT32, count=1),
-            PointField(name='z',   offset=8,  datatype=PointField.FLOAT32, count=1),
-            PointField(name='rgb', offset=12, datatype=PointField.FLOAT32, count=1),
-        ]
-        msg.point_step = 16
-        msg.row_step   = msg.point_step * N
-
-        # Create a (N,4) float32 array and dump as bytes
-        buf = np.empty((N,4), dtype='<f4')
-        buf[:, :3] = xyz_f32
-        buf[:, 3]  = rgb_float.astype('<f4', copy=False)
-        msg.data = buf.tobytes()  # one memcpy
-
-        self.pub.publish(msg)
     
     def transform_pcd(self, pc_msg: PointCloud2, src):
         if self.tf is None:
@@ -438,53 +307,11 @@ class PointCloudColorizer(Node):
         else:
             Zfill = Zimg
 
-        # self.get_logger().info(f"shape depth: {Zfill.shape}")
-        
-        # depth_msg = self.numpy_to_image_msg(Zfill, frame_id=self.rgb_frame)
-        # depth_msg.header = img_msg.header
-        # self.pub_depth_map.publish(depth_msg)
-        # 3) normalize to a stable display range and colorize
-        NEAR, FAR = 0.1, 10.0  # meters (set once for your setup)
-        zn = np.clip((Zfill - NEAR) / (FAR - NEAR), 0.0, 1.0)
-        # choose whether near=bright or near=dark by inverting
-        depth_u8 = np.uint8((1.0 - zn) * 255)          # near = warm/bright
-        cmap = getattr(cv2, 'COLORMAP_TURBO', cv2.COLORMAP_JET)
-        depth_color = cv2.applyColorMap(depth_u8, cmap)  # HxWx3 BGR
-
-        # 4) overlay on RGB (or publish the depth_color alone)
-        ALPHA = 0.55
-        dbg = cv2.addWeighted(img, 1.0 - ALPHA, depth_color, ALPHA, 0.0)
-
-        # (optional) add a tiny colorbar
-        h, w = 200, 12
-        bar = np.linspace(255, 0, h, dtype=np.uint8).reshape(h,1)
-        bar = cv2.applyColorMap(bar, cmap)
-        x0 = dbg.shape[1]-w-10; y0 = 10
-        dbg[y0:y0+h, x0:x0+w] = cv2.resize(bar, (w,h), interpolation=cv2.INTER_NEAREST)
-        cv2.putText(dbg, f"{NEAR:.2f} m", (x0-60, y0+h),  cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255,255,255), 1, cv2.LINE_AA)
-        cv2.putText(dbg, f"{FAR:.2f} m",  (x0-60, y0+10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255,255,255), 1, cv2.LINE_AA)
-
-        self.pub_dbg.publish(self.bridge.cv2_to_imgmsg(dbg, encoding='bgr8'))
-        
-        colors_bgr = self.bilinear_sample_bgr(img, uf[valid], vf[valid])
-        colors_rgb = colors_bgr[:, ::-1].astype(np.uint8)  # BGR->RGB
-
-        # Build colored cloud from the kept 3D points
-        # P_sel = Prgb[sel_idx, :].astype(np.float32)
-        P_sel = Prgb[valid, :].astype(np.float32)
-        # self.get_logger().info(f'Output points: {P_sel.shape[0]}')
-        rgb_packed = (colors_rgb[:,0].astype(np.uint32) << 16) | \
-                     (colors_rgb[:,1].astype(np.uint32) << 8)  | \
-                      colors_rgb[:,2].astype(np.uint32)
-        rgb_as_float = rgb_packed.view(np.float32)
-
-        # Create PointCloud2 (fields: x,y,z,rgb)
-        self.publish_xyzrgb_fast(header=pc_msg.header, xyz_f32=P_sel, rgb_float=rgb_as_float)
-        # self.save_rgb_depth_pair(img_msg=img_msg, Zfill=Zfill, out_dir='/home/yunjinli/git_repo/gradslam/data/jim_body')
+        self.publish_depth_buffer(rgb_msg=img_msg, depth_numpy=Zfill)
         
 def main():
     rclpy.init()
-    rclpy.spin(PointCloudColorizer())
+    rclpy.spin(DepthOverlay())
     rclpy.shutdown()
 
 if __name__ == '__main__':

@@ -30,6 +30,7 @@ setup(
             'colorize_pointcloud = sensor_pipeline.nodes.colorize_pointcloud:main',
             'grayscale_pointcloud = sensor_pipeline.nodes.grayscale_pointcloud:main',
             'depth_overlay = sensor_pipeline.nodes.depth_overlay:main',
+            'radar_semantic_mapping = sensor_pipeline.nodes.radar_semantic_mapping:main',
         ],
     },
 )
